@@ -205,7 +205,7 @@ aux_model = compose(actor_model, target_critic)
 
 load_weights = True
 save_weights = True  # beware when saving weights to not overwrite previous data
-use_custom = True
+use_custom = False
 
 custom_weights_path = "new_" if use_custom else ""
 
@@ -230,7 +230,7 @@ aux_optimizer = tf.keras.optimizers.Adam(aux_lr)
 critic_model.compile(loss='mse', optimizer=critic_optimizer)
 aux_model.compile(optimizer=aux_optimizer)
 
-total_episodes = 100
+total_episodes = 1000
 # Discount factor
 gamma = 0.99
 # Target network parameter update factor, for double DQN
@@ -333,6 +333,7 @@ def train(total_episodes=total_episodes):
         plt.plot(avg_reward_list)
         plt.xlabel("Episode")
         plt.ylabel("Avg. Episodic Reward")
+        plt.savefig("plot.png")
         plt.show()
 
 
