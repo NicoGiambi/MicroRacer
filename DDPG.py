@@ -4,7 +4,9 @@ from tensorflow.keras import regularizers
 import numpy as np
 import matplotlib.pyplot as plt
 import tracks
+import os
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 racer = tracks.Racer()
 
 ########################################
@@ -159,13 +161,16 @@ def policy(state, verbose=False):
 
 
 # creating models
+
 # actor_model = get_actor()
 actor_model = get_actor_separate()
 critic_model = get_critic()
+
 # actor_model.summary()
 # critic_model.summary()
 
 # we create the target model for double learning (to prevent a moving target phenomenon)
+
 # target_actor = get_actor()
 target_actor = get_actor_separate()
 target_critic = get_critic()
@@ -199,11 +204,15 @@ aux_model = compose(actor_model, target_critic)
 # ddpg_critic_weigths_32_car1_split.h5  # usual problem: sembra ok
 
 load_weights = True
-save_weights = False  # beware when saving weights to not overwrite previous data
+save_weights = True  # beware when saving weights to not overwrite previous data
+use_custom = True
+
+custom_weights_path = "new_" if use_custom else ""
+
 
 if load_weights:
-    critic_model.load_weights("weights/ddpg_critic_weigths_32_car3_split.h5")
-    actor_model.load_weights("weights/ddpg_actor_weigths_32_car3_split.h5")
+    critic_model.load_weights(f"{custom_weights_path}weights/ddpg_critic_weigths_32_car3_split.h5")
+    actor_model.load_weights(f"{custom_weights_path}weights/ddpg_actor_weigths_32_car3_split.h5")
 
 # Making the weights equal initially
 target_actor_weights = actor_model.get_weights()
@@ -221,7 +230,7 @@ aux_optimizer = tf.keras.optimizers.Adam(aux_lr)
 critic_model.compile(loss='mse', optimizer=critic_optimizer)
 aux_model.compile(optimizer=aux_optimizer)
 
-total_episodes = 10
+total_episodes = 100
 # Discount factor
 gamma = 0.99
 # Target network parameter update factor, for double DQN
@@ -318,16 +327,14 @@ def train(total_episodes=total_episodes):
 
     if total_episodes > 0:
         if save_weights:
-            critic_model.save_weights("weights/ddpg_critic_weigths_32_car3_split.h5")
-            actor_model.save_weights("weights/ddpg_actor_weigths_32_car3_split.h5")
+            critic_model.save_weights("new_weights/ddpg_critic_weigths_32_car3_split.h5")
+            actor_model.save_weights("new_weights/ddpg_actor_weigths_32_car3_split.h5")
         # Plotting Episodes versus Avg. Rewards
         plt.plot(avg_reward_list)
         plt.xlabel("Episode")
         plt.ylabel("Avg. Episodic Reward")
         plt.show()
 
-
-# train()
 
 def actor(state):
     print("speed = {}".format(state[1]))
@@ -338,4 +345,6 @@ def actor(state):
     return action[0]
 
 
-tracks.new_run(racer, actor)
+train()
+for run_n in range(10):
+    tracks.new_run(racer, actor, run_n)

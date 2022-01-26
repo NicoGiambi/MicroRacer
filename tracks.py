@@ -4,14 +4,16 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import time
 import pathlib
-import pyximport
-import lidar
 
 # generate the compiled and converted files for lidar.pyx using cython in the directory .pyxbld
 # auto recompile them at every edit on lidar.pyx
-pyxbld_dir = pathlib.PurePath.joinpath(pathlib.Path().resolve(), '.pyxbld')
 
+import pyximport;
+
+pyxbld_dir = pathlib.PurePath.joinpath(pathlib.Path().resolve(), '.pyxbld')
 pyximport.install(build_dir=pyxbld_dir, reload_support=True, language_level=3)
+
+import lidar
 
 
 # find border positions at theta, given the midline cs
@@ -89,8 +91,8 @@ def create_random_track(curves=20):
     y = np.c_[np.cos(theta) * var, np.sin(theta) * var]
     cs = CubicSpline(theta, y, bc_type='periodic')
     theta2 = 2 * np.pi * np.linspace(0, 1, 2 * curves)
-    csin, csout, _, _ = border_poly(cs, theta2)
-    return cs, csin, csout
+    cs_in, cs_out, _, _ = border_poly(cs, theta2)
+    return cs, cs_in, cs_out
 
 
 def no_inversion(theta_new, theta_old):
@@ -186,12 +188,13 @@ class Racer:
         self.max_acc = 0.1
         self.max_turn = np.pi / 6
 
+        self.cs, self.cs_in, self.cs_out = create_random_track(self.curves)
+        self.map, legal_map = create_route_map(self.cs_in, self.cs_out)
+
         self.car_theta = 0  # polar angle w.r.t center of the route
         self.car_x, self.car_y = self.cs(0)
         self.car_vx, self.car_vy = -self.cs(0, 1)
         self.done = False
-        self.cs, self.cs_in, self.cs_out = create_random_track(self.curves)
-        self.map, legal_map = create_route_map(self.cs_in, self.cs_out)
 
     def reset(self):
         legal_map = False
@@ -242,7 +245,7 @@ class Racer:
                 self.done = True
             self.car_theta = new_car_theta
             # TODO Check v -- new_v for reward value
-            return (lidar_signal, v), v * self.t_step, self.done
+            return (lidar_signal, v), reward, self.done
 
         else:
             if not on_route:
@@ -255,7 +258,7 @@ class Racer:
         return state, reward, True
 
 
-def new_run(racer, actor):
+def new_run(racer, actor, run_n):
     state = racer.reset()
     cs, cs_in, cs_out = racer.cs, racer.cs_in, racer.cs_out
     car_x, car_y = racer.car_x, racer.car_y
@@ -291,13 +294,15 @@ def new_run(racer, actor):
         state, reward, done = racer.step(action)
         # t2 = time.time()
         # print("time taken by step = {} sec.".format(t2 - t1))
-        x_data.append(racer.carx)
-        y_data.append(racer.cary)
+        x_data.append(racer.car_x)
+        y_data.append(racer.car_y)
         line.set_data(x_data, y_data)
         return line,
 
     anim = animation.FuncAnimation(fig, animate, init_func=init, frames=counter, interval=5, blit=True, repeat=False)
+    anim.save(f'animations/animation_{run_n}.gif')
     plt.show()
 
+
 # racer = Racer()
-# new_run(racer,my_actor)
+# new_run(racer, my_actor)
