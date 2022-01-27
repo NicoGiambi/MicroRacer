@@ -347,7 +347,8 @@ def actor(state):
 
 # train()
 simulations = 3
-for sim in range(simulations):
-    tracks.new_run(racer, actor, sim)
+
+# for sim in range(simulations):
+#     tracks.new_run(racer, actor, sim)
 
 tracks.new_multi_run(actor, simulations)
