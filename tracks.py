@@ -195,6 +195,7 @@ class Racer:
         self.car_x, self.car_y = self.cs(0)
         self.car_vx, self.car_vy = -self.cs(0, 1)
         self.done = False
+        self.completed = False
 
     def reset(self):
         legal_map = False
@@ -207,6 +208,7 @@ class Racer:
         self.car_x, self.car_y = self.cs(0)
         self.car_vx, self.car_vy = -self.cs(0, 1)
         self.done = False
+        self.completed = False
         v = np.random.uniform() * .5
         print("initial speed = ", v)
         v_norm = v / ((self.car_vx ** 2 + self.car_vy ** 2) ** .5)
@@ -243,9 +245,10 @@ class Racer:
             if complete(new_car_theta, self.car_theta):
                 print("completed")
                 self.done = True
+                self.completed = True
             self.car_theta = new_car_theta
             # TODO Check v -- new_v for reward value
-            return (lidar_signal, v), reward, self.done
+            return (lidar_signal, v), reward, self.done, self.completed
 
         else:
             if not on_route:
@@ -255,7 +258,7 @@ class Racer:
             self.done = True
             reward = -3
             state = None
-        return state, reward, True
+        return state, reward, True, False
 
 
 def new_run(racer, actor, run_n):
@@ -268,7 +271,7 @@ def new_run(racer, actor, run_n):
     ax.plot(cs_out(xs)[:, 0], cs_out(xs)[:, 1])
     ax.axes.set_aspect('equal')
 
-    line, = plt.plot([], [], lw=2)
+    line, = plt.plot([], [], color='b')
     x_data, y_data = [car_x], [car_y]
 
     acc = 0
@@ -291,7 +294,7 @@ def new_run(racer, actor, run_n):
         # t2 = time.time()
         # print("time taken by action = {} sec.".format(t2-t1))
         # t1 = time.time()
-        state, reward, done = racer.step(action)
+        state, reward, done, _ = racer.step(action)
         # t2 = time.time()
         # print("time taken by step = {} sec.".format(t2 - t1))
         x_data.append(racer.car_x)
@@ -303,6 +306,88 @@ def new_run(racer, actor, run_n):
     anim.save(f'animations/animation_{run_n}.gif')
     plt.show()
 
+
+def new_multi_run(actor, simulations=2):
+    fig, axes = plt.subplots(simulations, simulations, figsize=(8, 8))
+    for x_ax in axes:
+        for ax in x_ax:
+            ax.set_xticks([])
+            ax.set_yticks([])
+    line_grid = [[[] for j in range(simulations)] for i in range(simulations)]
+    x_data_grid = [[[] for j in range(simulations)] for i in range(simulations)]
+    y_data_grid = [[[] for j in range(simulations)] for i in range(simulations)]
+    racer_grid = [[[] for j in range(simulations)] for i in range(simulations)]
+    state_grid = [[[] for j in range(simulations)] for i in range(simulations)]
+    done_grid = [[False for j in range(simulations)] for i in range(simulations)]
+    completed_grid = [[False for j in range(simulations)] for i in range(simulations)]
+
+    for sim_x in range(simulations):
+        for sim_y in range(simulations):
+            racer = Racer()
+            racer_grid[sim_x][sim_y] = racer
+            state = racer.reset()
+            state_grid[sim_x][sim_y] = state
+
+            cs, cs_in, cs_out = racer.cs, racer.cs_in, racer.cs_out
+            car_x, car_y = racer.car_x, racer.car_y
+            xs = 2 * np.pi * np.linspace(0, 1, 200)
+            axes[sim_x, sim_y].plot(cs_in(xs)[:, 0], cs_in(xs)[:, 1])
+            axes[sim_x, sim_y].plot(cs_out(xs)[:, 0], cs_out(xs)[:, 1])
+            axes[sim_x, sim_y].axes.set_aspect('equal')
+
+            line, = axes[sim_x, sim_y].plot([], [], lw=2)
+            x_data, y_data = [car_x], [car_y]
+
+            line_grid[sim_x][sim_y] = line
+            x_data_grid[sim_x][sim_y] = x_data
+            y_data_grid[sim_x][sim_y] = y_data
+
+        def init():
+            for sim_x in range(simulations):
+                for sim_y in range(simulations):
+                    line_grid[sim_x][sim_y].set_data([], [])
+            return line,
+
+        def counter():
+            n = 0
+            while any(not el for row in done_grid for el in row):
+                n += 1
+                yield n
+
+        def animate(i):
+            for sim_x in range(simulations):
+                for sim_y in range(simulations):
+
+                    tmp_done = False
+                    completed_color = 'cyan'
+                    error_color = 'red'
+
+                    if done_grid[sim_x][sim_y]:
+                        if completed_grid[sim_x][sim_y]:
+                            color = completed_color
+                        else:
+                            color = error_color
+                        line_grid[sim_x][sim_y], = axes[sim_x, sim_y].plot([], [], lw=2, color=color)
+
+                    else:
+                        action = actor(state_grid[sim_x][sim_y])
+                        state_grid[sim_x][sim_y], reward, tmp_done, completed_grid[sim_x][sim_y] = racer_grid[sim_x][
+                            sim_y].step(action)
+
+                    done_grid[sim_x][sim_y] = done_grid[sim_x][sim_y] or tmp_done
+
+                    x_data_grid[sim_x][sim_y].append(racer_grid[sim_x][sim_y].car_x)
+                    y_data_grid[sim_x][sim_y].append(racer_grid[sim_x][sim_y].car_y)
+
+                    line_grid[sim_x][sim_y].set_data(x_data_grid[sim_x][sim_y], y_data_grid[sim_x][sim_y])
+
+            flat_grid = [item for sublist in line_grid for item in sublist]
+            return flat_grid
+
+    anim = animation.FuncAnimation(fig, animate, init_func=init, frames=counter, interval=5, save_count=250, blit=True,
+                                   repeat=False)
+    anim.save(f'animations/grid_animation.gif')
+    plt.show()
 
 # racer = Racer()
 # new_run(racer, my_actor)

@@ -209,7 +209,6 @@ use_custom = False
 
 custom_weights_path = "new_" if use_custom else ""
 
-
 if load_weights:
     critic_model.load_weights(f"{custom_weights_path}weights/ddpg_critic_weigths_32_car3_split.h5")
     actor_model.load_weights(f"{custom_weights_path}weights/ddpg_actor_weigths_32_car3_split.h5")
@@ -293,7 +292,7 @@ def train(total_episodes=total_episodes):
             # our policy is always noisy
             action = policy(tf_prev_state)[0]
             # Get state and reward from the environment
-            state, reward, done = racer.step(action)
+            state, reward, done, _ = racer.step(action)
             # we distinguish between termination with failure (state = None) and successful termination on track
             # completion successful termination is stored as a normal tuple
             fail = done and state is None
@@ -338,14 +337,17 @@ def train(total_episodes=total_episodes):
 
 
 def actor(state):
-    print("speed = {}".format(state[1]))
+    # print("speed = {}".format(state[1]))
     state = observe(state)
     state = tf.expand_dims(state, 0)
     action = actor_model(state)
-    print("acc = ", action[0, 0].numpy())
+    # print("acc = ", action[0, 0].numpy())
     return action[0]
 
 
-train()
-for run_n in range(10):
-    tracks.new_run(racer, actor, run_n)
+# train()
+simulations = 3
+for sim in range(simulations):
+    tracks.new_run(racer, actor, sim)
+
+tracks.new_multi_run(actor, simulations)
