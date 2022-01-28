@@ -1,3 +1,5 @@
+import argparse
+
 import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import regularizers
@@ -5,20 +7,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tracks
 import os
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-racer = tracks.Racer()
-
-########################################
-
-num_states = 5  # we reduce the state dim through observation (see below)
-num_actions = 2  # acceleration and steering
-print("State Space dim: {}, Action Space dim: {}".format(num_states, num_actions))
-
-upper_bound = 1
-lower_bound = -1
-
-print("Min and Max Value of Action: {}".format(lower_bound, upper_bound))
 
 
 # The actor choose the move, given the state
@@ -160,24 +148,6 @@ def policy(state, verbose=False):
     return [np.squeeze(legal_action)]
 
 
-# creating models
-
-# actor_model = get_actor()
-actor_model = get_actor_separate()
-critic_model = get_critic()
-
-# actor_model.summary()
-# critic_model.summary()
-
-# we create the target model for double learning (to prevent a moving target phenomenon)
-
-# target_actor = get_actor()
-target_actor = get_actor_separate()
-target_critic = get_critic()
-target_actor.trainable = False
-target_critic.trainable = False
-
-
 # We compose actor and critic in a single model.
 # The actor is trained by maximizing the future expected reward, estimated
 # by the critic. The critic should be frozen while training the actor.
@@ -194,53 +164,6 @@ def compose(actor, critic):
     # the loss function of the compound model is just the opposite of the critic output
     m.add_loss(-q)
     return m
-
-
-aux_model = compose(actor_model, target_critic)
-
-# TRAINING #
-# weights
-# ddpg_critic_weigths_32_car0_split.h5  # versione con reti distinte per le mosse. Muove bene ma lento
-# ddpg_critic_weigths_32_car1_split.h5  # usual problem: sembra ok
-
-load_weights = True
-save_weights = True  # beware when saving weights to not overwrite previous data
-use_custom = False
-
-custom_weights_path = "new_" if use_custom else ""
-
-if load_weights:
-    critic_model.load_weights(f"{custom_weights_path}weights/ddpg_critic_weigths_32_car3_split.h5")
-    actor_model.load_weights(f"{custom_weights_path}weights/ddpg_actor_weigths_32_car3_split.h5")
-
-# Making the weights equal initially
-target_actor_weights = actor_model.get_weights()
-target_critic_weights = critic_model.get_weights()
-target_actor.set_weights(target_actor_weights)
-target_critic.set_weights(target_critic_weights)
-
-# Learning rate for actor-critic models
-critic_lr = 0.001
-aux_lr = 0.001
-
-critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
-aux_optimizer = tf.keras.optimizers.Adam(aux_lr)
-
-critic_model.compile(loss='mse', optimizer=critic_optimizer)
-aux_model.compile(optimizer=aux_optimizer)
-
-total_episodes = 1000
-# Discount factor
-gamma = 0.99
-# Target network parameter update factor, for double DQN
-tau = 0.005
-
-buffer = Buffer(50000, 64)
-
-# History of rewards per episode
-ep_reward_list = []
-# Average reward history of last few episodes
-avg_reward_list = []
 
 
 # custom observation of the state
@@ -273,7 +196,7 @@ def observe(racer_state):
         return np.array([dir, dist_l, dist, dist_r, v])
 
 
-def train(total_episodes=total_episodes):
+def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder):
     i = 0
     mean_speed = 0
 
@@ -326,13 +249,13 @@ def train(total_episodes=total_episodes):
 
     if total_episodes > 0:
         if save_weights:
-            critic_model.save_weights("new_weights/ddpg_critic_weigths_32_car3_split.h5")
-            actor_model.save_weights("new_weights/ddpg_actor_weigths_32_car3_split.h5")
+            actor_model.save_weights(f"{weights_out_folder}actor_{out_name}.h5")
+            critic_model.save_weights(f"{weights_out_folder}critic_{out_name}.h5")
         # Plotting Episodes versus Avg. Rewards
         plt.plot(avg_reward_list)
         plt.xlabel("Episode")
         plt.ylabel("Avg. Episodic Reward")
-        plt.savefig("plot.png")
+        plt.savefig(f"{plots_folder}{out_name}.png")
         plt.show()
 
 
@@ -345,10 +268,105 @@ def actor(state):
     return action[0]
 
 
-# train()
-simulations = 3
+if __name__ == '__main__':
 
-# for sim in range(simulations):
-#     tracks.new_run(racer, actor, sim)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--simulate', type=bool, default=True)  # True to activate training, False just sim
+    parser.add_argument('--simulations', type=int, default=2)  # Number of simulations
+    parser.add_argument('--train', type=bool, default=False)  # True to activate training, False just sim
+    parser.add_argument('--episodes', type=int, default=10)  # Number of episodes (training only)
+    parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
+    parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
+    parser.add_argument('--load_weights', type=bool, default=True)  # True to load pretrained weights
+    parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
+    parser.add_argument('--weights_in_folder', type=str, default="weights/")  # Weights input folder
+    parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
+    parser.add_argument('--actor_in_weigths', type=str, default="ddpg_actor.h5")  # Weights input file, actor
+    parser.add_argument('--critic_in_weights', type=str, default="ddpg_critic.h5")  # Weights input file, critic
+    parser.add_argument('--out_file', type=str, default="extra_episodes")  # Weights output file
+    parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
 
-tracks.new_multi_run(actor, simulations)
+    args = parser.parse_args()
+
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    racer = tracks.Racer()
+
+    ########################################
+
+    num_states = 5  # we reduce the state dim through observation (see below)
+    num_actions = 2  # acceleration and steering
+    print("State Space dim: {}, Action Space dim: {}".format(num_states, num_actions))
+
+    upper_bound = 1
+    lower_bound = -1
+
+    print("Min and Max Value of Action: {}".format(lower_bound, upper_bound))
+
+    # creating models
+
+    # actor_model = get_actor()
+    actor_model = get_actor_separate()
+    critic_model = get_critic()
+
+    # actor_model.summary()
+    # critic_model.summary()
+
+    # we create the target model for double learning (to prevent a moving target phenomenon)
+
+    # target_actor = get_actor()
+    target_actor = get_actor_separate()
+    target_critic = get_critic()
+    target_actor.trainable = False
+    target_critic.trainable = False
+
+    aux_model = compose(actor_model, target_critic)
+
+    # TRAINING #
+    # weights
+    # ddpg_critic_weigths_32_car0_split.h5  # versione con reti distinte per le mosse. Muove bene ma lento
+    # ddpg_critic_weigths_32_car1_split.h5  # usual problem: sembra ok
+
+    if args.load_weights:
+        actor_model.load_weights(f"{args.weights_in_folder}{args.actor_in_weigths}")
+        critic_model.load_weights(f"{args.weights_in_folder}{args.critic_in_weights}")
+
+    # Making the weights equal initially
+    target_actor_weights = actor_model.get_weights()
+    target_critic_weights = critic_model.get_weights()
+    target_actor.set_weights(target_actor_weights)
+    target_critic.set_weights(target_critic_weights)
+
+    # Learning rate for actor-critic models
+    critic_lr = 0.01
+    aux_lr = 0.01
+
+    critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
+    aux_optimizer = tf.keras.optimizers.Adam(aux_lr)
+
+    critic_model.compile(loss='mse', optimizer=critic_optimizer)
+    aux_model.compile(optimizer=aux_optimizer)
+
+    buffer = Buffer(50000, 64)
+
+    # History of rewards per episode
+    ep_reward_list = []
+    # Average reward history of last few episodes
+    avg_reward_list = []
+
+    # TRAIN and SIMULATE #
+    if args.train:
+        train(total_episodes=args.episodes,
+              gamma=args.gamma,
+              tau=args.tau,
+              save_weights=args.save_weights,
+              weights_out_folder=args.weights_out_folder,
+              out_name=f"{args.episodes}{args.out_file}",
+              plots_folder=args.plot_folder)
+
+    # for sim in range(simulations):
+    #     tracks.new_run(racer, actor, sim)
+
+    if args.simulate:
+        tracks.new_multi_run(actor, args.simulations)
+
+    exit(0)
