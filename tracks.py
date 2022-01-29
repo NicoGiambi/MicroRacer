@@ -304,7 +304,7 @@ def new_run(racer, actor, run_n):
 
     anim = animation.FuncAnimation(fig, animate, init_func=init, frames=counter, interval=5, blit=True, repeat=False)
     anim.save(f'animations/animation_{run_n}.gif')
-    plt.show()
+    # plt.show()
 
 
 def new_multi_run(actor, simulations=2):

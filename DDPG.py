@@ -196,7 +196,7 @@ def observe(racer_state):
         return np.array([dir, dist_l, dist, dist_r, v])
 
 
-def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder):
+def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder, lr_dict):
     i = 0
     mean_speed = 0
 
@@ -247,6 +247,18 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
 
         avg_reward_list.append(avg_reward)
 
+        if lr_dict is not None:
+            if lr_dict['staircase']:
+                exp = i // lr_dict['decay_steps']
+            else:
+                exp = i / lr_dict['decay_steps']
+            exp_decay_rate = lr_dict['decay_rate'] ** exp
+            exp_decay = exp_decay_rate * lr_dict['initial_learning_rate']
+
+            # return initial_learning_rate * decay_rate ^ (step / decay_steps)
+
+            learning_rate_list.append(exp_decay)
+
     if total_episodes > 0:
         if save_weights:
             actor_model.save_weights(f"{weights_out_folder}actor_{out_name}.h5")
@@ -255,8 +267,15 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
         plt.plot(avg_reward_list)
         plt.xlabel("Episode")
         plt.ylabel("Avg. Episodic Reward")
-        plt.savefig(f"{plots_folder}{out_name}.png")
+        plt.savefig(f"{plots_folder}{out_name}_avg_reward.png")
         plt.show()
+
+        if lr_dict is not None:
+            plt.plot(learning_rate_list)
+            plt.xlabel("Episode")
+            plt.ylabel("Learning Rate")
+            plt.savefig(f"{plots_folder}{out_name}_lr_schedule.png")
+            plt.show()
 
 
 def actor(state):
@@ -277,13 +296,14 @@ if __name__ == '__main__':
     parser.add_argument('--episodes', type=int, default=10)  # Number of episodes (training only)
     parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
     parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
+    parser.add_argument('--lr_decay', type=bool, default=True)  # True to use exponential decay
     parser.add_argument('--load_weights', type=bool, default=True)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
     parser.add_argument('--actor_in_weigths', type=str, default="ddpg_actor.h5")  # Weights input file, actor
     parser.add_argument('--critic_in_weights', type=str, default="ddpg_critic.h5")  # Weights input file, critic
-    parser.add_argument('--out_file', type=str, default="extra_episodes")  # Weights output file
+    parser.add_argument('--out_file', type=str, default="_extra_episodes")  # Weights output file
     parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
 
     args = parser.parse_args()
@@ -336,9 +356,26 @@ if __name__ == '__main__':
     target_actor.set_weights(target_actor_weights)
     target_critic.set_weights(target_critic_weights)
 
+    if args.lr_decay:
+        exp_decay_dict = {
+            'initial_learning_rate': 0.001,
+            'decay_steps': 1000,
+            'decay_rate': 0.93,
+            'staircase': True
+        }
+
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            exp_decay_dict['initial_learning_rate'],
+            decay_steps=exp_decay_dict['decay_steps'],
+            decay_rate=exp_decay_dict['decay_rate'],
+            staircase=exp_decay_dict['staircase'])
+    else:
+        exp_decay_dict = None
+        lr_schedule = 0.001
+
     # Learning rate for actor-critic models
-    critic_lr = 0.01
-    aux_lr = 0.01
+    critic_lr = lr_schedule
+    aux_lr = lr_schedule
 
     critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
     aux_optimizer = tf.keras.optimizers.Adam(aux_lr)
@@ -352,6 +389,8 @@ if __name__ == '__main__':
     ep_reward_list = []
     # Average reward history of last few episodes
     avg_reward_list = []
+    # Decaying learning rate tracker
+    learning_rate_list = []
 
     # TRAIN and SIMULATE #
     if args.train:
@@ -361,7 +400,8 @@ if __name__ == '__main__':
               save_weights=args.save_weights,
               weights_out_folder=args.weights_out_folder,
               out_name=f"{args.episodes}{args.out_file}",
-              plots_folder=args.plot_folder)
+              plots_folder=args.plot_folder,
+              lr_dict=exp_decay_dict)
 
     # for sim in range(simulations):
     #     tracks.new_run(racer, actor, sim)
