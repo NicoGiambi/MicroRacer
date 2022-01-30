@@ -127,14 +127,46 @@ def update_weights(target_weights, weights, tau):
     return target_weights * (1 - tau) + weights * tau
 
 
-def policy(state, verbose=False):
+def linear_policy_decay_rate(current_episode, total_episodes):
+    return 1 - (current_episode / total_episodes)
+
+
+def quadratic_policy_decay_rate(current_episode, total_episodes):
+    return (1 - (current_episode / total_episodes)) ** 2
+
+
+def reward_based_policy_decay_rate(rewards_list):
+    if len(rewards_list) > 2:
+        rewards_delta = rewards_list[-1] - rewards_list[-2]
+        if rewards_delta > 0:
+            decay_factor = 0
+        else:
+            decay_factor = 1
+    else:
+        decay_factor = 4
+    return decay_factor
+
+
+def policy(state, verbose=False, current_episode=None, total_episodes=None, rewards_list=None, policy_decay=None):
     # the policy used for training just add noise to the action
-    # the amount of noise is kept constant during training
     sampled_action = tf.squeeze(actor_model(state))
     noise = np.random.normal(scale=0.1, size=2)
-    # we may change the amount of noise for actions during training
+    # the amount of noise is kept constant during training
     noise[0] *= 2
     noise[1] *= .5
+    decay_factor = 1
+    # we may change the amount of noise for actions during training
+    if policy_decay is not None:
+        if policy_decay == "linear":
+            decay_factor = linear_policy_decay_rate(current_episode, total_episodes)
+        elif policy_decay == "quadratic":
+            decay_factor = quadratic_policy_decay_rate(current_episode, total_episodes)
+        elif policy_decay == "rewards_based":
+            decay_factor = reward_based_policy_decay_rate(rewards_list)
+        # still more policies decay to try
+        else:
+            decay_factor = 1
+    noise *= decay_factor
     # Adding noise to action
     sampled_action = sampled_action.numpy()
     sampled_action += noise
@@ -145,7 +177,7 @@ def policy(state, verbose=False):
     # Finally, we ensure actions are within bounds
     legal_action = np.clip(sampled_action, lower_bound, upper_bound)
 
-    return [np.squeeze(legal_action)]
+    return [np.squeeze(legal_action)], decay_factor
 
 
 # We compose actor and critic in a single model.
@@ -196,7 +228,7 @@ def observe(racer_state):
         return np.array([dir, dist_l, dist, dist_r, v])
 
 
-def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder, lr_dict):
+def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder, lr_dict, policy_decay):
     i = 0
     mean_speed = 0
 
@@ -204,6 +236,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
 
         prev_state = observe(racer.reset())
         episodic_reward = 0
+        policy_decay_factor = 0
         mean_speed += prev_state[4]
         done = False
 
@@ -213,7 +246,13 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
             # our policy is always noisy
-            action = policy(tf_prev_state)[0]
+            action_list, policy_decay_factor = policy(state=tf_prev_state,
+                                                 verbose=False,
+                                                 current_episode=ep,
+                                                 total_episodes=total_episodes,
+                                                 rewards_list=avg_reward_list,
+                                                 policy_decay=policy_decay)
+            action = action_list[0]
             # Get state and reward from the environment
             state, reward, done, _ = racer.step(action)
             # we distinguish between termination with failure (state = None) and successful termination on track
@@ -246,6 +285,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
                                                                                        mean_speed / i))
 
         avg_reward_list.append(avg_reward)
+        policy_decay_list.append(policy_decay_factor)
 
         if lr_dict is not None:
             if lr_dict['staircase']:
@@ -277,6 +317,19 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             plt.savefig(f"{plots_folder}{out_name}_lr_schedule.png")
             plt.show()
 
+        if policy_decay is not None:
+            plt.plot(policy_decay_list)
+            plt.xlabel("Episode")
+            plt.ylabel("Policy Noise Factor")
+            plt.savefig(f"{plots_folder}{out_name}_policy_noise.png")
+            plt.show()
+
+        plt.plot(ep_reward_list)
+        plt.xlabel("Episode")
+        plt.ylabel("Episodic Reward")
+        plt.savefig(f"{plots_folder}{out_name}_episodic_reward.png")
+        plt.show()
+
 
 def actor(state):
     # print("speed = {}".format(state[1]))
@@ -290,18 +343,19 @@ def actor(state):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--simulate', type=bool, default=True)  # True to activate training, False just sim
+    parser.add_argument('--simulate', type=bool, default=False)  # True to activate training, False just sim
     parser.add_argument('--simulations', type=int, default=2)  # Number of simulations
     parser.add_argument('--train', type=bool, default=False)  # True to activate training, False just sim
     parser.add_argument('--episodes', type=int, default=10)  # Number of episodes (training only)
     parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
     parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
+    parser.add_argument('--policy_decay', type=str, default='linear')  # True to use exponential decay
     parser.add_argument('--lr_decay', type=bool, default=True)  # True to use exponential decay
     parser.add_argument('--load_weights', type=bool, default=True)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
-    parser.add_argument('--actor_in_weigths', type=str, default="ddpg_actor.h5")  # Weights input file, actor
+    parser.add_argument('--actor_in_weights', type=str, default="ddpg_actor.h5")  # Weights input file, actor
     parser.add_argument('--critic_in_weights', type=str, default="ddpg_critic.h5")  # Weights input file, critic
     parser.add_argument('--out_file', type=str, default="_extra_episodes")  # Weights output file
     parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
@@ -347,7 +401,7 @@ if __name__ == '__main__':
     # ddpg_critic_weigths_32_car1_split.h5  # usual problem: sembra ok
 
     if args.load_weights:
-        actor_model.load_weights(f"{args.weights_in_folder}{args.actor_in_weigths}")
+        actor_model.load_weights(f"{args.weights_in_folder}{args.actor_in_weights}")
         critic_model.load_weights(f"{args.weights_in_folder}{args.critic_in_weights}")
 
     # Making the weights equal initially
@@ -358,7 +412,7 @@ if __name__ == '__main__':
 
     if args.lr_decay:
         exp_decay_dict = {
-            'initial_learning_rate': 0.001,
+            'initial_learning_rate': 0.0001,
             'decay_steps': 1000,
             'decay_rate': 0.93,
             'staircase': True
@@ -371,7 +425,7 @@ if __name__ == '__main__':
             staircase=exp_decay_dict['staircase'])
     else:
         exp_decay_dict = None
-        lr_schedule = 0.001
+        lr_schedule = 10e-6
 
     # Learning rate for actor-critic models
     critic_lr = lr_schedule
@@ -391,6 +445,8 @@ if __name__ == '__main__':
     avg_reward_list = []
     # Decaying learning rate tracker
     learning_rate_list = []
+    # Policy noise factor tracker
+    policy_decay_list = []
 
     # TRAIN and SIMULATE #
     if args.train:
@@ -401,7 +457,8 @@ if __name__ == '__main__':
               weights_out_folder=args.weights_out_folder,
               out_name=f"{args.episodes}{args.out_file}",
               plots_folder=args.plot_folder,
-              lr_dict=exp_decay_dict)
+              lr_dict=exp_decay_dict,
+              policy_decay=args.policy_decay)
 
     # for sim in range(simulations):
     #     tracks.new_run(racer, actor, sim)

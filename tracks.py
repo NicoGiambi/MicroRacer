@@ -179,6 +179,14 @@ def lidar_grid(x, y, vx, vy, map, angle=np.pi / 3, pins=19):
     return lidar.lidar_grid(x, y, vx, vy, map, angle, pins)
 
 
+def get_new_theta(car_x, car_y, new_car_x, new_car_y):
+    old_pos = [car_x, car_y]
+    actual_pos = [new_car_x, new_car_y]
+    unit_vector_1 = old_pos / np.linalg.norm(old_pos)
+    unit_vector_2 = actual_pos / np.linalg.norm(actual_pos)
+    dot_product = np.dot(unit_vector_1, unit_vector_2)
+    theta = np.arccos(dot_product)
+    return theta
 #######################################################################################################################
 
 class Racer:
@@ -192,6 +200,7 @@ class Racer:
         self.map, legal_map = create_route_map(self.cs_in, self.cs_out)
 
         self.car_theta = 0  # polar angle w.r.t center of the route
+        self.car_angle = 0
         self.car_x, self.car_y = self.cs(0)
         self.car_vx, self.car_vy = -self.cs(0, 1)
         self.done = False
@@ -205,6 +214,7 @@ class Racer:
             self.cs, self.cs_in, self.cs_out = create_random_track(self.curves)
             self.map, legal_map = create_route_map(self.cs_in, self.cs_out)
         self.car_theta = 0  # polar angle w.r.t center of the route
+        self.car_angle = 0
         self.car_x, self.car_y = self.cs(0)
         self.car_vx, self.car_vy = -self.cs(0, 1)
         self.done = False
@@ -232,6 +242,8 @@ class Racer:
         new_car_x = self.car_x + new_car_vx * self.t_step
         new_car_y = self.car_y + new_car_vy * self.t_step
         new_car_theta = np.arctan2(new_car_y, new_car_x)
+        # reward based on angle between start and actual pos
+        reward = get_new_theta(self.car_x, self.car_y, new_car_x, new_car_y)
         on_route = self.map[int(new_car_x * 500) + 650, int(new_car_y * 500) + 650]
         if on_route and no_inversion(new_car_theta, self.car_theta):
             self.car_x = new_car_x
@@ -246,6 +258,7 @@ class Racer:
                 print("completed")
                 self.done = True
                 self.completed = True
+                reward = 1
             self.car_theta = new_car_theta
             # TODO Check v -- new_v for reward value
             return (lidar_signal, v), reward, self.done, self.completed
@@ -256,7 +269,7 @@ class Racer:
             else:
                 print("wrong direction")
             self.done = True
-            reward = -3
+            reward = -np.pi
             state = None
         return state, reward, True, False
 
