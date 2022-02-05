@@ -286,6 +286,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
 
         avg_reward_list.append(avg_reward)
         policy_decay_list.append(policy_decay_factor)
+        mean_speed_list.append(mean_speed / i)
 
         if lr_dict is not None:
             if lr_dict['staircase']:
@@ -330,6 +331,12 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
         plt.savefig(f"{plots_folder}{out_name}_episodic_reward.png")
         plt.show()
 
+        plt.plot(mean_speed_list)
+        plt.xlabel("Episode")
+        plt.ylabel("Average Speed")
+        plt.savefig(f"{plots_folder}{out_name}_avg_speed.png")
+        plt.show()
+
 
 def actor(state):
     # print("speed = {}".format(state[1]))
@@ -349,9 +356,9 @@ if __name__ == '__main__':
     parser.add_argument('--episodes', type=int, default=10)  # Number of episodes (training only)
     parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
     parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
-    parser.add_argument('--policy_decay', type=str, default='linear')  # True to use exponential decay
-    parser.add_argument('--lr_decay', type=bool, default=True)  # True to use exponential decay
-    parser.add_argument('--load_weights', type=bool, default=True)  # True to load pretrained weights
+    parser.add_argument('--policy_decay', type=str, default=None)  # True to use exponential decay
+    parser.add_argument('--lr_decay', type=bool, default=False)  # True to use exponential decay
+    parser.add_argument('--load_weights', type=bool, default=False)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
@@ -412,7 +419,7 @@ if __name__ == '__main__':
 
     if args.lr_decay:
         exp_decay_dict = {
-            'initial_learning_rate': 0.0001,
+            'initial_learning_rate': 0.001,
             'decay_steps': 1000,
             'decay_rate': 0.93,
             'staircase': True
@@ -425,7 +432,7 @@ if __name__ == '__main__':
             staircase=exp_decay_dict['staircase'])
     else:
         exp_decay_dict = None
-        lr_schedule = 10e-6
+        lr_schedule = 1e-3
 
     # Learning rate for actor-critic models
     critic_lr = lr_schedule
@@ -447,6 +454,8 @@ if __name__ == '__main__':
     learning_rate_list = []
     # Policy noise factor tracker
     policy_decay_list = []
+    # Mean speed tracker
+    mean_speed_list = []
 
     # TRAIN and SIMULATE #
     if args.train:

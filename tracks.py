@@ -179,7 +179,7 @@ def lidar_grid(x, y, vx, vy, map, angle=np.pi / 3, pins=19):
     return lidar.lidar_grid(x, y, vx, vy, map, angle, pins)
 
 
-def get_new_theta(car_x, car_y, new_car_x, new_car_y):
+def get_new_angle(car_x, car_y, new_car_x, new_car_y):
     old_pos = [car_x, car_y]
     actual_pos = [new_car_x, new_car_y]
     unit_vector_1 = old_pos / np.linalg.norm(old_pos)
@@ -242,23 +242,24 @@ class Racer:
         new_car_x = self.car_x + new_car_vx * self.t_step
         new_car_y = self.car_y + new_car_vy * self.t_step
         new_car_theta = np.arctan2(new_car_y, new_car_x)
-        # reward based on angle between start and actual pos
-        reward = get_new_theta(self.car_x, self.car_y, new_car_x, new_car_y)
         on_route = self.map[int(new_car_x * 500) + 650, int(new_car_y * 500) + 650]
         if on_route and no_inversion(new_car_theta, self.car_theta):
+            # reward based on angle between start and actual pos
+            # reward = get_new_angle(self.car_x, self.car_y, new_car_x, new_car_y)
+            # TODO check reward value
+            # reward based on increasing speed
+            reward = new_v * self.t_step
             self.car_x = new_car_x
             self.car_y = new_car_y
             self.car_vx = new_car_vx
             self.car_vy = new_car_vy
-            # TODO check reward value
-            reward = new_v * self.t_step
             lidar_signal = lidar_grid(self.car_x, self.car_y, self.car_vx, self.car_vy, self.map)
             # dir,dist = max_lidar2(obs)
             if complete(new_car_theta, self.car_theta):
                 print("completed")
                 self.done = True
                 self.completed = True
-                reward = 1
+                reward = np.pi
             self.car_theta = new_car_theta
             # TODO Check v -- new_v for reward value
             return (lidar_signal, v), reward, self.done, self.completed
