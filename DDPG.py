@@ -230,28 +230,29 @@ def observe(racer_state):
 
 def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder, lr_dict, policy_decay):
     i = 0
-    mean_speed = 0
 
     for ep in range(total_episodes):
 
         prev_state = observe(racer.reset())
         episodic_reward = 0
+        episode_steps = 0
         policy_decay_factor = 0
-        mean_speed += prev_state[4]
+        speed = prev_state[4]
         done = False
 
-        while not done:
+        while not done:  # and episode_steps < 500:
             i = i + 1
+            episode_steps += 1
 
             tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
             # our policy is always noisy
             action_list, policy_decay_factor = policy(state=tf_prev_state,
-                                                 verbose=False,
-                                                 current_episode=ep,
-                                                 total_episodes=total_episodes,
-                                                 rewards_list=avg_reward_list,
-                                                 policy_decay=policy_decay)
+                                                      verbose=False,
+                                                      current_episode=ep,
+                                                      total_episodes=total_episodes,
+                                                      rewards_list=avg_reward_list,
+                                                      policy_decay=policy_decay)
             action = action_list[0]
             # Get state and reward from the environment
             state, reward, done, _ = racer.step(action)
@@ -260,10 +261,10 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             fail = done and state is None
             state = observe(state)
             buffer.record((prev_state, action, reward, fail, state))
-            if not done:
-                mean_speed += state[4]
 
-            buffer.record((prev_state, action, reward, done, state))
+            if not done:
+                speed += state[4]
+
             episodic_reward += reward
 
             states, actions, rewards, dones, new_states = buffer.sample_batch()
@@ -278,15 +279,22 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             prev_state = state
 
         ep_reward_list.append(episodic_reward)
+        episodic_speed = speed / episode_steps
+        ep_speed_list.append(episodic_speed)
 
-        # Mean of last 40 episodes
-        avg_reward = np.mean(ep_reward_list[-40:])
-        print("Episode {}: Avg. Reward = {}, Last reward = {}. Avg. speed = {}".format(ep, avg_reward, episodic_reward,
-                                                                                       mean_speed / i))
+        # Mean of last sliding_window episodes
+        sliding_window = max(40, total_episodes // 100)
+        avg_reward = np.mean(ep_reward_list[-sliding_window:])
+        avg_speed = np.mean(ep_speed_list[-sliding_window:])
 
         avg_reward_list.append(avg_reward)
         policy_decay_list.append(policy_decay_factor)
-        mean_speed_list.append(mean_speed / i)
+        avg_speed_list.append(avg_speed)
+
+        print(f"----------------------------------------------------------------- \n"
+              f"Episode {ep} --  Ep. Steps = {episode_steps} \n"
+              f"Avg. Reward = {avg_reward} -- Last reward = {episodic_reward} \n"
+              f"Avg. Speed = {avg_speed} -- Last speed = {episodic_speed}")
 
         if lr_dict is not None:
             if lr_dict['staircase']:
@@ -325,13 +333,14 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             plt.savefig(f"{plots_folder}{out_name}_policy_noise.png")
             plt.show()
 
-        plt.plot(ep_reward_list)
-        plt.xlabel("Episode")
-        plt.ylabel("Episodic Reward")
-        plt.savefig(f"{plots_folder}{out_name}_episodic_reward.png")
-        plt.show()
+        if False:
+            plt.plot(ep_reward_list)
+            plt.xlabel("Episode")
+            plt.ylabel("Episodic Reward")
+            plt.savefig(f"{plots_folder}{out_name}_episodic_reward.png")
+            plt.show()
 
-        plt.plot(mean_speed_list)
+        plt.plot(avg_speed_list)
         plt.xlabel("Episode")
         plt.ylabel("Average Speed")
         plt.savefig(f"{plots_folder}{out_name}_avg_speed.png")
@@ -360,7 +369,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr_decay', type=bool, default=False)  # True to use exponential decay
     parser.add_argument('--load_weights', type=bool, default=False)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
-    parser.add_argument('--weights_in_folder', type=str, default="weights/")  # Weights input folder
+    parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
     parser.add_argument('--actor_in_weights', type=str, default="ddpg_actor.h5")  # Weights input file, actor
     parser.add_argument('--critic_in_weights', type=str, default="ddpg_critic.h5")  # Weights input file, critic
@@ -454,8 +463,10 @@ if __name__ == '__main__':
     learning_rate_list = []
     # Policy noise factor tracker
     policy_decay_list = []
-    # Mean speed tracker
-    mean_speed_list = []
+    # Ep speed tracker
+    ep_speed_list = []
+    # Avg speed tracker
+    avg_speed_list = []
 
     # TRAIN and SIMULATE #
     if args.train:

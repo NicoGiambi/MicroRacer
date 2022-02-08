@@ -187,6 +187,19 @@ def get_new_angle(car_x, car_y, new_car_x, new_car_y):
     dot_product = np.dot(unit_vector_1, unit_vector_2)
     theta = np.arccos(dot_product)
     return theta
+
+
+def get_angle_from_start(car_x, car_y):
+    old_pos = [1, 0]
+    actual_pos = [car_x, car_y]
+    unit_vector_1 = old_pos / np.linalg.norm(old_pos)
+    unit_vector_2 = actual_pos / np.linalg.norm(actual_pos)
+    dot_product = np.dot(unit_vector_1, unit_vector_2)
+    theta = np.arccos(dot_product)
+    theta = np.deg2rad(theta)
+    return theta
+
+
 #######################################################################################################################
 
 class Racer:
@@ -194,7 +207,7 @@ class Racer:
         self.curves = 20
         self.t_step = 0.1
         self.max_acc = 0.1
-        self.max_turn = np.pi / 6
+        self.max_turn = np.pi / 3
 
         self.cs, self.cs_in, self.cs_out = create_random_track(self.curves)
         self.map, legal_map = create_route_map(self.cs_in, self.cs_out)
@@ -245,10 +258,12 @@ class Racer:
         on_route = self.map[int(new_car_x * 500) + 650, int(new_car_y * 500) + 650]
         if on_route and no_inversion(new_car_theta, self.car_theta):
             # reward based on angle between start and actual pos
-            # reward = get_new_angle(self.car_x, self.car_y, new_car_x, new_car_y)
+            # reward = get_angle_from_start(self.car_x, self.car_y)
+            reward = get_new_angle(self.car_x, self.car_y, new_car_x, new_car_y)
             # TODO check reward value
             # reward based on increasing speed
-            reward = new_v * self.t_step
+            # reward = new_v * self.t_step
+            # reward = v * self.t_step
             self.car_x = new_car_x
             self.car_y = new_car_y
             self.car_vx = new_car_vx
