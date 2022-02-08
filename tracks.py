@@ -259,11 +259,11 @@ class Racer:
         if on_route and no_inversion(new_car_theta, self.car_theta):
             # reward based on angle between start and actual pos
             # reward = get_angle_from_start(self.car_x, self.car_y)
-            reward = get_new_angle(self.car_x, self.car_y, new_car_x, new_car_y)
+            # reward = get_new_angle(self.car_x, self.car_y, new_car_x, new_car_y)
             # TODO check reward value
             # reward based on increasing speed
             # reward = new_v * self.t_step
-            # reward = v * self.t_step
+            reward = v * self.t_step
             self.car_x = new_car_x
             self.car_y = new_car_y
             self.car_vx = new_car_vx
@@ -415,7 +415,6 @@ def new_multi_run(actor, simulations=2):
     anim = animation.FuncAnimation(fig, animate, init_func=init, frames=counter, interval=5, save_count=250, blit=True,
                                    repeat=False)
     anim.save(f'animations/grid_animation.gif')
-    plt.show()
 
 # racer = Racer()
 # new_run(racer, my_actor)

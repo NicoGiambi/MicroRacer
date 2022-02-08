@@ -371,8 +371,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
-    parser.add_argument('--actor_in_weights', type=str, default="ddpg_actor.h5")  # Weights input file, actor
-    parser.add_argument('--critic_in_weights', type=str, default="ddpg_critic.h5")  # Weights input file, critic
+    parser.add_argument('--input_weights', type=str, default=None)  # Weights input file, critic
     parser.add_argument('--out_file', type=str, default="_extra_episodes")  # Weights output file
     parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
 
@@ -395,7 +394,7 @@ if __name__ == '__main__':
     # creating models
 
     # actor_model = get_actor()
-    actor_model = get_actor_separate()
+    actor_model = get_actor_separate(train_acceleration=False, train_direction=True)
     critic_model = get_critic()
 
     # actor_model.summary()
@@ -417,8 +416,8 @@ if __name__ == '__main__':
     # ddpg_critic_weigths_32_car1_split.h5  # usual problem: sembra ok
 
     if args.load_weights:
-        actor_model.load_weights(f"{args.weights_in_folder}{args.actor_in_weights}")
-        critic_model.load_weights(f"{args.weights_in_folder}{args.critic_in_weights}")
+        actor_model.load_weights(f"{args.weights_in_folder}actor{args.input_weights}.h5")
+        critic_model.load_weights(f"{args.weights_in_folder}critic{args.input_weights}.h5")
 
     # Making the weights equal initially
     target_actor_weights = actor_model.get_weights()
@@ -485,5 +484,8 @@ if __name__ == '__main__':
 
     if args.simulate:
         tracks.new_multi_run(actor, args.simulations)
+
+    actor_model.summary()
+    aux_model.summary()
 
     exit(0)
