@@ -207,7 +207,7 @@ class Racer:
         self.curves = 20
         self.t_step = 0.1
         self.max_acc = 0.1
-        self.max_turn = np.pi / 3
+        self.max_turn = np.pi / 6
 
         self.cs, self.cs_in, self.cs_out = create_random_track(self.curves)
         self.map, legal_map = create_route_map(self.cs_in, self.cs_out)
@@ -274,7 +274,6 @@ class Racer:
                 print("completed")
                 self.done = True
                 self.completed = True
-                reward = np.pi
             self.car_theta = new_car_theta
             # TODO Check v -- new_v for reward value
             return (lidar_signal, v), reward, self.done, self.completed
