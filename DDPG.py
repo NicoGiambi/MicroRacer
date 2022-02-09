@@ -115,6 +115,28 @@ class Buffer:
         sn = self.next_state_buffer[batch_indices]
         return s, a, r, T, sn
 
+    def sample_batch_with_bias(self):
+        # Get sampling range
+        index = self.buffer_counter % self.buffer_capacity
+        record_range = min(self.buffer_counter, self.buffer_capacity)
+        bias = np.array(range(record_range)) + 1
+        bias = np.flip(bias)
+        # bias = np.exp(bias)  # Move the bias according to exp or other functions
+        bias = bias / np.sum(bias)
+        bias = np.roll(bias, index)
+        # print('******************************')
+        # print(bias)
+        # print('******************************')
+
+        # Randomly sample indices
+        batch_indices = np.random.choice(record_range, self.batch_size, p=bias)
+
+        s = self.state_buffer[batch_indices]
+        a = self.action_buffer[batch_indices]
+        r = self.reward_buffer[batch_indices]
+        T = self.done_buffer[batch_indices]
+        sn = self.next_state_buffer[batch_indices]
+        return s, a, r, T, sn
 
 # Slowly updating target parameters according to the tau rate <<1
 @tf.function
@@ -268,6 +290,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             episodic_reward += reward
 
             states, actions, rewards, dones, new_states = buffer.sample_batch()
+
             targetQ = rewards + (1 - dones) * gamma * (target_critic([new_states, target_actor(new_states)]))
 
             loss1 = critic_model.train_on_batch([states, actions], targetQ)
@@ -294,7 +317,8 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
         print(f"----------------------------------------------------------------- \n"
               f"Episode {ep} --  Ep. Steps = {episode_steps} \n"
               f"Avg. Reward = {avg_reward} -- Last reward = {episodic_reward} \n"
-              f"Avg. Speed = {avg_speed} -- Last speed = {episodic_speed}")
+              f"Avg. Speed = {avg_speed} -- Last speed = {episodic_speed} \n"
+              f"Buffer counter: {buffer.buffer_counter}")
 
         if lr_dict is not None:
             if lr_dict['staircase']:
@@ -394,7 +418,7 @@ if __name__ == '__main__':
     # creating models
 
     # actor_model = get_actor()
-    actor_model = get_actor_separate(train_acceleration=False, train_direction=True)
+    actor_model = get_actor_separate()
     critic_model = get_critic()
 
     # actor_model.summary()

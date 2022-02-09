@@ -264,6 +264,7 @@ class Racer:
             # reward based on increasing speed
             # reward = new_v * self.t_step
             reward = v * self.t_step
+            # reward = self.t_step
             self.car_x = new_car_x
             self.car_y = new_car_y
             self.car_vx = new_car_vx
