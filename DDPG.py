@@ -518,3 +518,5 @@ if __name__ == '__main__':
     aux_model.summary()
 
     exit(0)
+
+# todo python .\DDPG.py --train True --episodes 10000  --out_file _scratch_square_bias_2nd
