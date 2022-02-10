@@ -115,16 +115,19 @@ class Buffer:
         sn = self.next_state_buffer[batch_indices]
         return s, a, r, T, sn
 
-    def sample_batch_with_bias(self):
+    def sample_batch_with_bias(self, flip=False):
         # Get sampling range
         index = self.buffer_counter % self.buffer_capacity
         record_range = min(self.buffer_counter, self.buffer_capacity)
         bias = np.array(range(record_range)) + 1
-        bias = np.flip(bias)
-        # bias = np.exp(bias)  # Move the bias according to exp or other functions
+        if flip:
+            bias = np.flip(bias)
+
+        bias = np.square((bias / self.buffer_counter) + 1)  # Move the bias according to exp or other functions
+        # print('******************************')
+        # print(np.sum(bias))
         bias = bias / np.sum(bias)
         bias = np.roll(bias, index)
-        # print('******************************')
         # print(bias)
         # print('******************************')
 
@@ -137,6 +140,7 @@ class Buffer:
         T = self.done_buffer[batch_indices]
         sn = self.next_state_buffer[batch_indices]
         return s, a, r, T, sn
+
 
 # Slowly updating target parameters according to the tau rate <<1
 @tf.function
@@ -289,7 +293,8 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
 
             episodic_reward += reward
 
-            states, actions, rewards, dones, new_states = buffer.sample_batch()
+            states, actions, rewards, dones, new_states = buffer.sample_batch_with_bias()
+            # states, actions, rewards, dones, new_states = buffer.sample_batch()
 
             targetQ = rewards + (1 - dones) * gamma * (target_critic([new_states, target_actor(new_states)]))
 
