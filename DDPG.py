@@ -143,11 +143,11 @@ class Buffer:
             print('Storing experience into VAE ...')
             vae_batch_index = index - self.batch_size
 
-            state_batch = self.state_buffer[vae_batch_index:self.buffer_counter]
-            action_batch = self.action_buffer[vae_batch_index:self.buffer_counter]
-            reward_batch = self.reward_buffer[vae_batch_index:self.buffer_counter]
-            done_batch = self.done_buffer[vae_batch_index:self.buffer_counter]
-            next_state_batch = self.next_state_buffer[vae_batch_index:self.buffer_counter]
+            state_batch = self.state_buffer[vae_batch_index:index]
+            action_batch = self.action_buffer[vae_batch_index:index]
+            reward_batch = self.reward_buffer[vae_batch_index:index]
+            done_batch = self.done_buffer[vae_batch_index:index]
+            next_state_batch = self.next_state_buffer[vae_batch_index:index]
 
             real_samples = np.column_stack((state_batch, action_batch, reward_batch, done_batch, next_state_batch))
 
