@@ -2,13 +2,12 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import time
 import pathlib
 
 # generate the compiled and converted files for lidar.pyx using cython in the directory .pyxbld
 # auto recompile them at every edit on lidar.pyx
 
-import pyximport;
+import pyximport
 
 pyxbld_dir = pathlib.PurePath.joinpath(pathlib.Path().resolve(), '.pyxbld')
 pyximport.install(build_dir=pyxbld_dir, reload_support=True, language_level=3)
@@ -239,11 +238,10 @@ class Racer:
         self.car_vy *= v_norm
         assert (self.map[int(self.car_x * 500) + 650, int(self.car_y * 500) + 650])
         lidar_signal = lidar_grid(self.car_x, self.car_y, self.car_vx, self.car_vy, self.map)
-        # dir, dist = max_lidar2(lidar_obs)
-        # print("distance = {}, direction = {}".format(dist,dir))
+
         return lidar_signal, v
 
-    def step(self, action):
+    def step(self, action, reward_type):
         max_incr = self.max_acc * self.t_step
         acc, turn = action
         v = (self.car_vx ** 2 + self.car_vy ** 2) ** .5
@@ -259,11 +257,13 @@ class Racer:
         if on_route and no_inversion(new_car_theta, self.car_theta):
             # reward based on angle between start and actual pos
             # reward = get_angle_from_start(self.car_x, self.car_y)
-            # reward = get_new_angle(self.car_x, self.car_y, new_car_x, new_car_y)
+            if reward_type == 'polar':
+                reward = get_new_angle(self.car_x, self.car_y, new_car_x, new_car_y)
             # TODO check reward value
             # reward based on increasing speed
             # reward = new_v * self.t_step
-            reward = v * self.t_step
+            else:
+                reward = v * self.t_step
             # reward = self.t_step
             self.car_x = new_car_x
             self.car_y = new_car_y

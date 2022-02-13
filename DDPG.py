@@ -1,11 +1,12 @@
 import argparse
 
 import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras import regularizers
+from tensorflow.keras import layers, regularizers
 import numpy as np
 import matplotlib.pyplot as plt
 import tracks
+from tensorflow.keras.optimizers import Adam
+from VAE import VariationalAutoEncoder
 import os
 
 
@@ -28,18 +29,41 @@ def get_actor():
     return model
 
 
-def get_actor_separate(train_acceleration=True, train_direction=True):
+def get_actor_separate(train_acceleration=True, train_direction=True, regularizer=None):
     # the actor has separate towers for action and speed
     # in this way we can train them separately
+    if regularizer is not None:
+        l2 = regularizers.l2(regularizer)
+    else:
+        l2 = None
 
     inputs = layers.Input(shape=(num_states,))
-    out1 = layers.Dense(32, activation="relu", trainable=train_acceleration)(inputs)
-    out1 = layers.Dense(32, activation="relu", trainable=train_acceleration)(out1)
-    out1 = layers.Dense(1, activation='tanh', trainable=train_acceleration)(out1)
 
-    out2 = layers.Dense(32, activation="relu", trainable=train_direction)(inputs)
-    out2 = layers.Dense(32, activation="relu", trainable=train_direction)(out2)
-    out2 = layers.Dense(1, activation='tanh', trainable=train_direction)(out2)
+    out1 = layers.Dense(32,
+                        activation="relu",
+                        kernel_regularizer=l2,
+                        trainable=train_acceleration)(inputs)
+    out1 = layers.Dense(32,
+                        activation="relu",
+                        kernel_regularizer=l2,
+                        trainable=train_acceleration)(out1)
+    out1 = layers.Dense(1,
+                        activation='tanh',
+                        kernel_regularizer=l2,
+                        trainable=train_acceleration)(out1)
+
+    out2 = layers.Dense(32,
+                        activation="relu",
+                        kernel_regularizer=l2,
+                        trainable=train_direction)(inputs)
+    out2 = layers.Dense(32,
+                        activation="relu",
+                        kernel_regularizer=l2,
+                        trainable=train_direction)(out2)
+    out2 = layers.Dense(1,
+                        activation='tanh',
+                        kernel_regularizer=l2,
+                        trainable=train_direction)(out2)
 
     outputs = layers.concatenate([out1, out2])
 
@@ -49,21 +73,36 @@ def get_actor_separate(train_acceleration=True, train_direction=True):
 
 
 # the critic compute the q-value, given the state and the action
-def get_critic():
+def get_critic(regularizer=None):
+    if regularizer is not None:
+        l2 = regularizers.l2(regularizer)
+    else:
+        l2 = None
     # State as input
-    state_input = layers.Input(shape=num_states)
-    state_out = layers.Dense(16, activation="relu")(state_input)
-    state_out = layers.Dense(32, activation="relu")(state_out)
+    state_input = layers.Input(shape=(num_states,))
+    state_out = layers.Dense(16,
+                             kernel_regularizer=l2,
+                             activation="relu")(state_input)
+    state_out = layers.Dense(32,
+                             kernel_regularizer=l2,
+                             activation="relu")(state_out)
 
     # Action as input
-    action_input = layers.Input(shape=num_actions)
-    action_out = layers.Dense(32, activation="relu")(action_input)
+    action_input = layers.Input(shape=(num_actions,))
+    action_out = layers.Dense(32,
+                              kernel_regularizer=l2,
+                              activation="relu")(action_input)
 
     concat = layers.Concatenate()([state_out, action_out])
 
-    out = layers.Dense(64, activation="relu")(concat)
-    out = layers.Dense(64, activation="relu")(out)
-    outputs = layers.Dense(1)(out)  # Outputs single value
+    out = layers.Dense(64,
+                       kernel_regularizer=l2,
+                       activation="relu")(concat)
+    out = layers.Dense(64,
+                       kernel_regularizer=l2,
+                       activation="relu")(out)
+
+    outputs = layers.Dense(1)(out)  # outputs single value
 
     model = tf.keras.Model([state_input, action_input], outputs, name="critic")
 
@@ -89,7 +128,7 @@ class Buffer:
         self.next_state_buffer = np.zeros((self.buffer_capacity, num_states))
 
     # Stores a transition (s,a,r,s') in the buffer
-    def record(self, obs_tuple):
+    def record(self, obs_tuple, use_vae):
         s, a, r, T, sn = obs_tuple
         # restart form zero if buffer_capacity is exceeded, replacing old records
         index = self.buffer_counter % self.buffer_capacity
@@ -102,43 +141,82 @@ class Buffer:
 
         self.buffer_counter += 1
 
-    def sample_batch(self):
-        # Get sampling range
-        record_range = min(self.buffer_counter, self.buffer_capacity)
-        # Randomly sample indices
-        batch_indices = np.random.choice(record_range, self.batch_size)
+        # if batch size element are collected, train VAE
+        if index % self.batch_size == 0 and index > 0 and use_vae:
+            print('Storing experience into VAE ...')
+            vae_batch_index = index - self.batch_size
 
-        s = self.state_buffer[batch_indices]
-        a = self.action_buffer[batch_indices]
-        r = self.reward_buffer[batch_indices]
-        T = self.done_buffer[batch_indices]
-        sn = self.next_state_buffer[batch_indices]
-        return s, a, r, T, sn
+            state_batch = self.state_buffer[vae_batch_index:index]
+            action_batch = self.action_buffer[vae_batch_index:index]
+            reward_batch = self.reward_buffer[vae_batch_index:index]
+            done_batch = self.done_buffer[vae_batch_index:index]
+            next_state_batch = self.next_state_buffer[vae_batch_index:index]
 
-    def sample_batch_with_bias(self, flip=False):
+            real_samples = np.column_stack((state_batch, action_batch, reward_batch, done_batch, next_state_batch))
+
+            # generate batch_size pseudo-states with VAE and then mix them wth real states
+            # we may change sampling from latent space (e.g. Gibbs sampling)
+            random_vector_for_generation = tf.random.normal(shape=[self.batch_size, latent_dim])
+
+            pseudo_samples = vae.decoder(random_vector_for_generation)
+            samples = np.concatenate((real_samples, pseudo_samples.numpy()), axis=0)
+            np.random.shuffle(samples)
+
+            # shuffle and convert to tensor
+            samples = tf.convert_to_tensor(samples)
+
+            callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
+            vae.fit(x=samples,
+                    y=samples,
+                    epochs=100,
+                    batch_size=96,
+                    shuffle=True,
+                    validation_split=0.25,
+                    callbacks=[callback])
+
+    def sample_batch(self, use_vae=False, bias=None, flip=False):
         # Get sampling range
         index = self.buffer_counter % self.buffer_capacity
         record_range = min(self.buffer_counter, self.buffer_capacity)
-        bias = np.array(range(record_range)) + 1
-        if flip:
-            bias = np.flip(bias)
+        if bias is not None:
+            bias = np.array(range(record_range)) + 1
+            if flip:
+                bias = np.flip(bias)
+            if bias == 'linear':
+                bias = (bias / self.buffer_counter) + 1  # Move the bias according linearly
+            elif bias == 'quadratic':
+                bias = np.square((bias / self.buffer_counter) + 1)  # Move the bias according to exp or other functions
+            elif bias == 'exponential':
+                bias = np.exp((bias / self.buffer_counter) + 1)  # Move the bias according to exp or other functions
+            bias = bias / np.sum(bias)
+            bias = np.roll(bias, index)
 
-        bias = np.square((bias / self.buffer_counter) + 1)  # Move the bias according to exp or other functions
-        # print('******************************')
-        # print(np.sum(bias))
-        bias = bias / np.sum(bias)
-        bias = np.roll(bias, index)
-        # print(bias)
-        # print('******************************')
+            # Randomly sample indices
+            batch_indices = np.random.choice(record_range, self.batch_size, p=bias)
 
-        # Randomly sample indices
-        batch_indices = np.random.choice(record_range, self.batch_size, p=bias)
+        else:
+            batch_indices = np.random.choice(record_range, self.batch_size)
 
         s = self.state_buffer[batch_indices]
         a = self.action_buffer[batch_indices]
         r = self.reward_buffer[batch_indices]
         T = self.done_buffer[batch_indices]
         sn = self.next_state_buffer[batch_indices]
+
+        if use_vae:
+            # before sampling from replay buffer, generate some pseudo-samples
+            random_vector_for_generation = tf.random.normal(shape=[self.batch_size // 2, latent_dim])
+
+            pseudo_samples = vae.decoder(random_vector_for_generation)
+            np.random.shuffle(pseudo_samples.numpy())
+
+            s[:self.batch_size // 2] = pseudo_samples[:, :num_states]
+            a[:self.batch_size // 2] = pseudo_samples[:, num_states:num_states + num_actions]
+            r[:self.batch_size // 2] = np.reshape(pseudo_samples[:, num_states + num_actions],
+                                                  (self.batch_size // 2, 1))
+            T[:self.batch_size // 2] = np.reshape(pseudo_samples[:, -(num_states + 1)], (self.batch_size // 2, 1))
+            sn[:self.batch_size // 2] = pseudo_samples[:, -num_states:]
+
         return s, a, r, T, sn
 
 
@@ -173,7 +251,38 @@ def reward_based_policy_decay_rate(rewards_list):
     return decay_factor
 
 
-def policy(state, verbose=False, current_episode=None, total_episodes=None, rewards_list=None, policy_decay=None):
+# noise generator (not usual random noise)
+class OUActionNoise:
+    def __init__(self, mean, std_deviation, theta=0.15, dt=1e-2, x_initial=None):
+        self.theta = theta
+        self.mean = mean
+        self.std_dev = std_deviation
+        self.dt = dt
+        self.x_initial = x_initial
+        self.x_prev = 0
+        self.reset()
+
+    def __call__(self):
+        # Formula taken from https://www.wikipedia.org/wiki/Ornstein-Uhlenbeck_process.
+        x = (
+                self.x_prev
+                + self.theta * (self.mean - self.x_prev) * self.dt
+                + self.std_dev * np.sqrt(self.dt) * np.random.normal(size=self.mean.shape)
+        )
+        # Store x into x_prev
+        # Makes next noise dependent on current one
+        self.x_prev = x
+        return x
+
+    def reset(self):
+        if self.x_initial is not None:
+            self.x_prev = self.x_initial
+        else:
+            self.x_prev = np.zeros_like(self.mean)
+
+
+def policy(state, verbose=False, current_episode=None, total_episodes=None, rewards_list=None,
+           policy_decay=None, ou_noise=None):
     # the policy used for training just add noise to the action
     sampled_action = tf.squeeze(actor_model(state))
     noise = np.random.normal(scale=0.1, size=2)
@@ -189,6 +298,8 @@ def policy(state, verbose=False, current_episode=None, total_episodes=None, rewa
             decay_factor = quadratic_policy_decay_rate(current_episode, total_episodes)
         elif policy_decay == "rewards_based":
             decay_factor = reward_based_policy_decay_rate(rewards_list)
+        elif policy_decay == "OUA":
+            noise = ou_noise()
         # still more policies decay to try
         else:
             decay_factor = 1
@@ -254,8 +365,13 @@ def observe(racer_state):
         return np.array([dir, dist_l, dist, dist_r, v])
 
 
-def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder, lr_dict, policy_decay):
+def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder, lr_dict, policy_decay,
+          use_vae, reward_type):
     i = 0
+    if policy_decay == "OUA":
+        ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(0.2) * np.ones(1))
+    else:
+        ou_noise = None
 
     for ep in range(total_episodes):
 
@@ -278,23 +394,23 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
                                                       current_episode=ep,
                                                       total_episodes=total_episodes,
                                                       rewards_list=avg_reward_list,
-                                                      policy_decay=policy_decay)
+                                                      policy_decay=policy_decay,
+                                                      ou_noise=ou_noise)
             action = action_list[0]
             # Get state and reward from the environment
-            state, reward, done, _ = racer.step(action)
+            state, reward, done, _ = racer.step(action=action, reward_type=reward_type)
             # we distinguish between termination with failure (state = None) and successful termination on track
             # completion successful termination is stored as a normal tuple
             fail = done and state is None
             state = observe(state)
-            buffer.record((prev_state, action, reward, fail, state))
+            buffer.record((prev_state, action, reward, fail, state), use_vae=use_vae)
 
             if not done:
                 speed += state[4]
 
             episodic_reward += reward
 
-            states, actions, rewards, dones, new_states = buffer.sample_batch_with_bias()
-            # states, actions, rewards, dones, new_states = buffer.sample_batch()
+            states, actions, rewards, dones, new_states = buffer.sample_batch(use_vae=use_vae)
 
             targetQ = rewards + (1 - dones) * gamma * (target_critic([new_states, target_actor(new_states)]))
 
@@ -311,7 +427,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
         ep_speed_list.append(episodic_speed)
 
         # Mean of last sliding_window episodes
-        sliding_window = max(40, total_episodes // 100)
+        sliding_window = max(40, total_episodes // 200)
         avg_reward = np.mean(ep_reward_list[-sliding_window:])
         avg_speed = np.mean(ep_speed_list[-sliding_window:])
 
@@ -394,8 +510,12 @@ if __name__ == '__main__':
     parser.add_argument('--episodes', type=int, default=10)  # Number of episodes (training only)
     parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
     parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
+    parser.add_argument('--use_vae', type=bool, default=False)  # Use VAE to sample from buffer
     parser.add_argument('--policy_decay', type=str, default=None)  # True to use exponential decay
     parser.add_argument('--lr_decay', type=bool, default=False)  # True to use exponential decay
+    parser.add_argument('--lr', type=float, default=0.001)  # Initial Learning Rate
+    parser.add_argument('--regularizer', type=float, default=None)  # Regularizing Factor
+    parser.add_argument('--reward', type=str, default=None)  # None or polar
     parser.add_argument('--load_weights', type=bool, default=False)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
@@ -418,13 +538,21 @@ if __name__ == '__main__':
     upper_bound = 1
     lower_bound = -1
 
-    print("Min and Max Value of Action: {}".format(lower_bound, upper_bound))
+    print(f"Min and Max Value of Action: {lower_bound} : {upper_bound}")
 
     # creating models
 
+    # VAE parameters
+    # original_dim is the number of items in a sample recorded in replay buffer,
+    # i.e. num_states (starting_state) + num_actions (actions) + 1 (reward) + 1 (done) + num_states (output_states)
+    drop_out_prob = 0.1
+    original_dim = num_states + num_actions + 1 + 1 + num_states
+    intermediate_dim = 64
+    latent_dim = 4
+
     # actor_model = get_actor()
-    actor_model = get_actor_separate()
-    critic_model = get_critic()
+    actor_model = get_actor_separate(regularizer=args.regularizer)
+    critic_model = get_critic(regularizer=args.regularizer)
 
     # actor_model.summary()
     # critic_model.summary()
@@ -454,9 +582,11 @@ if __name__ == '__main__':
     target_actor.set_weights(target_actor_weights)
     target_critic.set_weights(target_critic_weights)
 
+    vae = VariationalAutoEncoder(original_dim, intermediate_dim, latent_dim, drop_out_prob)
+
     if args.lr_decay:
         exp_decay_dict = {
-            'initial_learning_rate': 0.001,
+            'initial_learning_rate': args.lr,
             'decay_steps': 1000,
             'decay_rate': 0.93,
             'staircase': True
@@ -469,17 +599,20 @@ if __name__ == '__main__':
             staircase=exp_decay_dict['staircase'])
     else:
         exp_decay_dict = None
-        lr_schedule = 1e-3
+        lr_schedule = args.lr
 
     # Learning rate for actor-critic models
     critic_lr = lr_schedule
     aux_lr = lr_schedule
+    vae_lr = lr_schedule
 
-    critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
-    aux_optimizer = tf.keras.optimizers.Adam(aux_lr)
+    critic_optimizer = Adam(critic_lr)
+    aux_optimizer = Adam(aux_lr)
+    vae_optimizer = Adam(vae_lr)
 
     critic_model.compile(loss='mse', optimizer=critic_optimizer)
     aux_model.compile(optimizer=aux_optimizer)
+    vae.compile(loss='mse', optimizer=vae_optimizer)
 
     buffer = Buffer(50000, 64)
 
@@ -506,7 +639,9 @@ if __name__ == '__main__':
               out_name=f"{args.episodes}{args.out_file}",
               plots_folder=args.plot_folder,
               lr_dict=exp_decay_dict,
-              policy_decay=args.policy_decay)
+              policy_decay=args.policy_decay,
+              use_vae=args.use_vae,
+              reward_type=args.reward)
 
     # for sim in range(simulations):
     #     tracks.new_run(racer, actor, sim)
