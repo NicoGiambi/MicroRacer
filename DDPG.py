@@ -410,7 +410,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
 
             episodic_reward += reward
 
-            states, actions, rewards, dones, new_states = buffer.sample_batch(use_vae=use_vae, bias=buffer_bias)
+            states, actions, rewards, dones, new_states = buffer.sample_batch(use_vae=use_vae, buffer_bias=buffer_bias)
 
             targetQ = rewards + (1 - dones) * gamma * (target_critic([new_states, target_actor(new_states)]))
 
@@ -527,7 +527,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
     parser.add_argument('--input_weights', type=str, default=None)  # Weights input file, critic
-    parser.add_argument('--out_file', type=str, default="_scratch_polar_square_bias_policy_quadratic_lr_1e4")  # Weights output file
+    parser.add_argument('--out_file', type=str, default="_scratch_polar_policy_quadratic_lr_1e4")  # Weights output file
     parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
 
     args = parser.parse_args()
@@ -648,7 +648,7 @@ if __name__ == '__main__':
               policy_decay=args.policy_decay,
               use_vae=args.use_vae,
               reward_type=args.reward,
-              bias=args.buffer_bias)
+              buffer_bias=args.buffer_bias)
 
     # for sim in range(simulations):
     #     tracks.new_run(racer, actor, sim)
