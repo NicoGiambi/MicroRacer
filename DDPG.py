@@ -174,19 +174,19 @@ class Buffer:
                     validation_split=0.25,
                     callbacks=[callback])
 
-    def sample_batch(self, use_vae=False, bias=None, flip=False):
+    def sample_batch(self, use_vae=False, buffer_bias=None, flip=False):
         # Get sampling range
         index = self.buffer_counter % self.buffer_capacity
         record_range = min(self.buffer_counter, self.buffer_capacity)
-        if bias is not None:
+        if buffer_bias is not None:
             bias = np.array(range(record_range)) + 1
             if flip:
                 bias = np.flip(bias)
-            if bias == 'linear':
+            if buffer_bias == 'linear':
                 bias = (bias / self.buffer_counter) + 1  # Move the bias according linearly
-            elif bias == 'quadratic':
+            elif buffer_bias == 'quadratic':
                 bias = np.square((bias / self.buffer_counter) + 1)  # Move the bias according to exp or other functions
-            elif bias == 'exponential':
+            elif buffer_bias == 'exponential':
                 bias = np.exp((bias / self.buffer_counter) + 1)  # Move the bias according to exp or other functions
             bias = bias / np.sum(bias)
             bias = np.roll(bias, index)
@@ -366,7 +366,7 @@ def observe(racer_state):
 
 
 def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name, plots_folder, lr_dict, policy_decay,
-          use_vae, reward_type):
+          use_vae, reward_type, buffer_bias):
     i = 0
     if policy_decay == "OUA":
         ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(0.2) * np.ones(1))
@@ -410,7 +410,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
 
             episodic_reward += reward
 
-            states, actions, rewards, dones, new_states = buffer.sample_batch(use_vae=use_vae)
+            states, actions, rewards, dones, new_states = buffer.sample_batch(use_vae=use_vae, bias=buffer_bias)
 
             targetQ = rewards + (1 - dones) * gamma * (target_critic([new_states, target_actor(new_states)]))
 
@@ -521,6 +521,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.0001)  # Initial Learning Rate
     parser.add_argument('--regularizer', type=float, default=None)  # Regularizing Factor
     parser.add_argument('--reward', type=str, default='polar')  # None or polar
+    parser.add_argument('--buffer_bias', type=str, default=None)  # Change sampling policy from buffer records
     parser.add_argument('--load_weights', type=bool, default=False)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
@@ -646,7 +647,8 @@ if __name__ == '__main__':
               lr_dict=exp_decay_dict,
               policy_decay=args.policy_decay,
               use_vae=args.use_vae,
-              reward_type=args.reward)
+              reward_type=args.reward,
+              bias=args.buffer_bias)
 
     # for sim in range(simulations):
     #     tracks.new_run(racer, actor, sim)
