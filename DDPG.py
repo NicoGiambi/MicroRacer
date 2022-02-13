@@ -427,7 +427,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
         ep_speed_list.append(episodic_speed)
 
         # Mean of last sliding_window episodes
-        sliding_window = max(40, total_episodes // 200)
+        sliding_window = max(40, total_episodes // 50)
         avg_reward = np.mean(ep_reward_list[-sliding_window:])
         avg_speed = np.mean(ep_speed_list[-sliding_window:])
 
