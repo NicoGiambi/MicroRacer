@@ -119,6 +119,7 @@ class Buffer:
 
         # Current number of tuples in buffer
         self.buffer_counter = 0
+        self.index = 0
 
         # We have a different array for each tuple element
         self.state_buffer = np.zeros((self.buffer_capacity, num_states))
@@ -131,13 +132,13 @@ class Buffer:
     def record(self, obs_tuple, use_vae):
         s, a, r, T, sn = obs_tuple
         # restart form zero if buffer_capacity is exceeded, replacing old records
-        index = self.buffer_counter % self.buffer_capacity
+        self.index = self.buffer_counter % self.buffer_capacity
 
-        self.state_buffer[index] = tf.squeeze(s)
-        self.action_buffer[index] = a
-        self.reward_buffer[index] = r
-        self.done_buffer[index] = T
-        self.next_state_buffer[index] = tf.squeeze(sn)
+        self.state_buffer[self.index] = tf.squeeze(s)
+        self.action_buffer[self.index] = a
+        self.reward_buffer[self.index] = r
+        self.done_buffer[self.index] = T
+        self.next_state_buffer[self.index] = tf.squeeze(sn)
 
         self.buffer_counter += 1
 
@@ -438,11 +439,10 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             pseudo_samples = vae.decoder(random_vector_for_generation)
             samples = np.concatenate((real_samples, pseudo_samples.numpy()), axis=0)
             np.random.shuffle(samples)
-            print(samples.shape)
-            exit()
 
             # drop remainder
-            samples = samples[:, ]
+            drop_indexes = samples.shape[0] % buffer.batch_size
+            samples = samples[: samples.shape[0] - drop_indexes, :]
 
             # shuffle and convert to tensor
             samples = tf.convert_to_tensor(samples)
@@ -450,7 +450,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
             vae.fit(x=samples,
                     y=samples,
-                    epochs=100,
+                    epochs=500,
                     batch_size=buffer.batch_size,
                     shuffle=True,
                     validation_split=0.25,
@@ -461,7 +461,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
         ep_speed_list.append(episodic_speed)
 
         # Mean of last sliding_window episodes
-        sliding_window = max(40, total_episodes // 200)
+        sliding_window = max(40, total_episodes // 50)
         avg_reward = np.mean(ep_reward_list[-sliding_window:])
         avg_speed = np.mean(ep_speed_list[-sliding_window:])
 
@@ -546,21 +546,21 @@ if __name__ == '__main__':
     parser.add_argument('--simulate', type=bool, default=False)  # True to activate training, False just sim
     parser.add_argument('--simulations', type=int, default=2)  # Number of simulations
     parser.add_argument('--train', type=bool, default=True)  # True to activate training, False just sim
-    parser.add_argument('--episodes', type=int, default=10000)  # Number of episodes (training only)
+    parser.add_argument('--episodes', type=int, default=15000)  # Number of episodes (training only)
     parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
     parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
     parser.add_argument('--use_vae', type=bool, default=True)  # Use VAE to sample from buffer
-    parser.add_argument('--policy_decay', type=str, default=None)  # True to use exponential decay
+    parser.add_argument('--policy_decay', type=str, default="quadratic")  # True to use exponential decay
     parser.add_argument('--lr_decay', type=bool, default=False)  # True to use exponential decay
-    parser.add_argument('--lr', type=float, default=0.001)  # Initial Learning Rate
+    parser.add_argument('--lr', type=float, default=0.0001)  # Initial Learning Rate
     parser.add_argument('--regularizer', type=float, default=None)  # Regularizing Factor
-    parser.add_argument('--reward', type=str, default=None)  # None or polar
+    parser.add_argument('--reward', type=str, default="polar")  # None or polar
     parser.add_argument('--load_weights', type=bool, default=False)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=False)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
     parser.add_argument('--input_weights', type=str, default=None)  # Weights input file, critic
-    parser.add_argument('--out_file', type=str, default="_extra_episodes")  # Weights output file
+    parser.add_argument('--out_file', type=str, default="run1500_polar_reward_gen_replay_vae_after_episodes")  # Weights output file
     parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
 
     args = parser.parse_args()
