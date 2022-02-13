@@ -170,7 +170,7 @@ def create_route_map(inner, outer, discr=2000, show_map=False):
         plt.plot(inner(xs)[:, 0], inner(xs)[:, 1])
         plt.plot(outer(xs)[:, 0], outer(xs)[:, 1])
         # plt.axes.set_aspect('equal')
-        plt.show()
+        # plt.show()
     return map, True
 
 

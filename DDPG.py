@@ -462,34 +462,39 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
         plt.xlabel("Episode")
         plt.ylabel("Avg. Episodic Reward")
         plt.savefig(f"{plots_folder}{out_name}_avg_reward.png")
-        plt.show()
+        # plt.show()
+        plt.clf()
 
         if lr_dict is not None:
             plt.plot(learning_rate_list)
             plt.xlabel("Episode")
             plt.ylabel("Learning Rate")
             plt.savefig(f"{plots_folder}{out_name}_lr_schedule.png")
-            plt.show()
+            # plt.show()
+            plt.clf()
 
         if policy_decay is not None:
             plt.plot(policy_decay_list)
             plt.xlabel("Episode")
             plt.ylabel("Policy Noise Factor")
             plt.savefig(f"{plots_folder}{out_name}_policy_noise.png")
-            plt.show()
+            # plt.show()
+            plt.clf()
 
         if False:
             plt.plot(ep_reward_list)
             plt.xlabel("Episode")
             plt.ylabel("Episodic Reward")
             plt.savefig(f"{plots_folder}{out_name}_episodic_reward.png")
-            plt.show()
+            # plt.show()
+            plt.clf()
 
         plt.plot(avg_speed_list)
         plt.xlabel("Episode")
         plt.ylabel("Average Speed")
         plt.savefig(f"{plots_folder}{out_name}_avg_speed.png")
-        plt.show()
+        # plt.show()
+        plt.clf()
 
 
 def actor(state):
