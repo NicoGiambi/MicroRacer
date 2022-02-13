@@ -67,6 +67,7 @@ class VariationalAutoEncoder(tf.keras.Model):
     ):
         super(VariationalAutoEncoder, self).__init__(name=name, **kwargs)
         self.original_dim = original_dim
+        self.latent_dim = latent_dim
         self.encoder = Encoder(latent_dim=latent_dim, intermediate_dim=intermediate_dim, drop_out_prob=drop_out_prob)
         self.decoder = Decoder(original_dim, intermediate_dim=intermediate_dim, drop_out_prob=drop_out_prob)
 
