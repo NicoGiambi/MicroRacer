@@ -29,11 +29,13 @@ def get_actor():
     return model
 
 
-def get_actor_separate(train_acceleration=True, train_direction=True, regularizer=0):
+def get_actor_separate(train_acceleration=True, train_direction=True, regularizer=None):
     # the actor has separate towers for action and speed
     # in this way we can train them separately
     if regularizer is not None:
         l2 = regularizers.l2(regularizer)
+    else:
+        l2 = None
 
     inputs = layers.Input(shape=(num_states,))
 
@@ -74,7 +76,8 @@ def get_actor_separate(train_acceleration=True, train_direction=True, regularize
 def get_critic(regularizer=None):
     if regularizer is not None:
         l2 = regularizers.l2(regularizer)
-
+    else:
+        l2 = None
     # State as input
     state_input = layers.Input(shape=(num_states,))
     state_out = layers.Dense(16,
@@ -166,7 +169,7 @@ class Buffer:
             vae.fit(x=samples,
                     y=samples,
                     epochs=100,
-                    batch_size=32,
+                    batch_size=96,
                     shuffle=True,
                     validation_split=0.25,
                     callbacks=[callback])
