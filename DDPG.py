@@ -511,22 +511,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--simulate', type=bool, default=False)  # True to activate training, False just sim
     parser.add_argument('--simulations', type=int, default=2)  # Number of simulations
-    parser.add_argument('--train', type=bool, default=False)  # True to activate training, False just sim
-    parser.add_argument('--episodes', type=int, default=10)  # Number of episodes (training only)
+    parser.add_argument('--train', type=bool, default=True)  # True to activate training, False just sim
+    parser.add_argument('--episodes', type=int, default=30000)  # Number of episodes (training only)
     parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
     parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
     parser.add_argument('--use_vae', type=bool, default=False)  # Use VAE to sample from buffer
-    parser.add_argument('--policy_decay', type=str, default=None)  # True to use exponential decay
+    parser.add_argument('--policy_decay', type=str, default='quadratic')  # True to use exponential decay
     parser.add_argument('--lr_decay', type=bool, default=False)  # True to use exponential decay
-    parser.add_argument('--lr', type=float, default=0.001)  # Initial Learning Rate
+    parser.add_argument('--lr', type=float, default=0.0001)  # Initial Learning Rate
     parser.add_argument('--regularizer', type=float, default=None)  # Regularizing Factor
-    parser.add_argument('--reward', type=str, default=None)  # None or polar
+    parser.add_argument('--reward', type=str, default='polar')  # None or polar
     parser.add_argument('--load_weights', type=bool, default=False)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=True)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
     parser.add_argument('--input_weights', type=str, default=None)  # Weights input file, critic
-    parser.add_argument('--out_file', type=str, default="_extra_episodes")  # Weights output file
+    parser.add_argument('--out_file', type=str, default="_scratch_polar_square_bias_policy_quadratic_lr_1e4")  # Weights output file
     parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
 
     args = parser.parse_args()
