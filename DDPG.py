@@ -423,7 +423,14 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             prev_state = state
 
         # episode ended, training VAE on episode tuples
-        if buffer.index > buffer.batch_size and buffer.index > 0 and use_vae:
+        # when avg reward is stable and positive, VAE training should be less frequent
+        # more precisely training should be performed when episode reward is higher than
+        # last sliding_window episodes
+
+        sliding_window = max(40, total_episodes // 50)
+        avg_reward = np.mean(ep_reward_list[-sliding_window:])
+
+        if episodic_reward > avg_reward and buffer.index > 2 * buffer.batch_size and buffer.index > 0 and use_vae:
             state_data = buffer.state_buffer[:buffer.index]
             action_data = buffer.action_buffer[:buffer.index]
             reward_data = buffer.reward_buffer[:buffer.index]
@@ -441,7 +448,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             np.random.shuffle(samples)
 
             # drop remainder
-            drop_indexes = samples.shape[0] % buffer.batch_size
+            drop_indexes = samples.shape[0] % (2 * buffer.batch_size)
             samples = samples[: samples.shape[0] - drop_indexes, :]
 
             # shuffle and convert to tensor
@@ -451,7 +458,7 @@ def train(total_episodes, gamma, tau, save_weights, weights_out_folder, out_name
             vae.fit(x=samples,
                     y=samples,
                     epochs=500,
-                    batch_size=buffer.batch_size,
+                    batch_size=buffer.batch_size * 2,
                     shuffle=True,
                     validation_split=0.25,
                     callbacks=[callback])
@@ -550,17 +557,17 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)  # Discount factor
     parser.add_argument('--tau', type=float, default=0.05)  # Target network parameter update factor, for double DQN
     parser.add_argument('--use_vae', type=bool, default=True)  # Use VAE to sample from buffer
-    parser.add_argument('--policy_decay', type=str, default="quadratic")  # True to use exponential decay
+    parser.add_argument('--policy_decay', type=str, default=None)  # True to use exponential decay
     parser.add_argument('--lr_decay', type=bool, default=False)  # True to use exponential decay
-    parser.add_argument('--lr', type=float, default=0.0001)  # Initial Learning Rate
+    parser.add_argument('--lr', type=float, default=0.001)  # Initial Learning Rate
     parser.add_argument('--regularizer', type=float, default=None)  # Regularizing Factor
-    parser.add_argument('--reward', type=str, default="polar")  # None or polar
+    parser.add_argument('--reward', type=str, default=None)  # None or polar
     parser.add_argument('--load_weights', type=bool, default=False)  # True to load pretrained weights
     parser.add_argument('--save_weights', type=bool, default=False)  # True to save trained weights
     parser.add_argument('--weights_in_folder', type=str, default="new_weights/")  # Weights input folder
     parser.add_argument('--weights_out_folder', type=str, default="new_weights/")  # Weights output folder
     parser.add_argument('--input_weights', type=str, default=None)  # Weights input file, critic
-    parser.add_argument('--out_file', type=str, default="run1500_polar_reward_gen_replay_vae_after_episodes")  # Weights output file
+    parser.add_argument('--out_file', type=str, default="run1500_normal_reward_no_policy_vae_lr_1e3")  # Weights output file
     parser.add_argument('--plot_folder', type=str, default="plots/")  # Plots folder
 
     args = parser.parse_args()
